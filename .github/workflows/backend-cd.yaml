@@ -80,21 +80,26 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build Docker Image
+      - name: Build and Push Docker Image
+        env:
+          ECR_REPOSITORY: ${{ secrets.BACKEND_ECR_REPO }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t ${{ secrets.BACKEND_ECR_REPO }}:${{ github.sha }} .
-
-      - name: Push Docker Image to ECR
-        run: |
-          docker push ${{ secrets.BACKEND_ECR_REPO }}:${{ github.sha }}
+          docker build -t "${ECR_REPOSITORY}:${IMAGE_TAG}" .
+          docker push "${ECR_REPOSITORY}:${IMAGE_TAG}"
 
       - name: Setup Kustomize
         uses: imranismail/setup-kustomize@v3
 
       - name: Deploy to Kubernetes
+        env:
+          ECR_REPOSITORY: ${{ secrets.BACKEND_ECR_REPO }}
+          IMAGE_TAG: ${{ github.sha }}
+          CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+          aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
           cd k8s
-          kustomize edit set image backend=${{ secrets.BACKEND_ECR_REPO }}:${{ github.sha }}
+          kustomize edit set image backend="${ECR_REPOSITORY}:${IMAGE_TAG}"
           kustomize build | kubectl apply -f -
           kubectl rollout status deployment/backend --timeout=180s
